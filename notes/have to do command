@@ -1,0 +1,3 @@
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+pip freeze > requirements.txt
+uvicorn 17_fastsql:app
