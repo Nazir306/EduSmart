@@ -34,6 +34,7 @@ class UserCreate(BaseModel):
     password: str
     full_name: str
     role: str = "teacher"  # Default to "teacher", but can be "admin"
+    phone_number: str
 
 class StudentCreate(BaseModel):
     full_name: str
@@ -44,6 +45,13 @@ class GradeCreate(BaseModel):
     subject: str
     score: float
     term: str = "Finals"
+
+class SubstitutionRequest(BaseModel):
+    date: str          # "YYYY-MM-DD"
+    day_of_week: str   # "Monday"
+    start_time: str    # "09:00"
+    end_time: str      # "10:00"
+    subject_needed: str # "Mathematics"
 
 # --- SCHEMAS FOR MODULE B (SCHEDULING) ---
 class ScheduleCreate(BaseModel):
@@ -60,6 +68,10 @@ class AvailabilityCreate(BaseModel):
     start_time: str
     end_time: str
     status: str       # "BUSY" or "PREFERRED"
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 # --- API ENDPOINTS ---
 
@@ -86,7 +98,8 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         username=user.username,
         password_hash=user.password,  # In real app, hash this!
         full_name=user.full_name,
-        role=user.role
+        role=user.role,
+        phone_number=user.phone_number
     )
 
     # 3. Save to Database
@@ -275,3 +288,167 @@ def set_availability(avail: AvailabilityCreate, db: Session = Depends(get_db)):
     db.add(new_avail)
     db.commit()
     return {"status": "success", "message": "Availability updated"}
+
+@app.get("/schedule/master")
+def get_master_schedule(db: Session = Depends(get_db)):
+    """
+    Fetch ALL scheduled classes for the Master Timetable.
+    Includes Teacher Name.
+    """
+    # Join Schedule with User to get teacher names
+    results = db.query(
+        models.Schedule.day_of_week,
+        models.Schedule.start_time,
+        models.Schedule.end_time,
+        models.Schedule.subject,
+        models.Schedule.room,
+        User.full_name
+    ).join(User, models.Schedule.teacher_id == User.id).all()
+
+    # Format data for JSON
+    master_list = []
+    for day, start, end, subj, room, teacher in results:
+        master_list.append({
+            "day": day,
+            "start": start.strftime("%H:%M"),
+            "end": end.strftime("%H:%M"),
+            "subject": subj,
+            "room": room,
+            "teacher": teacher
+        })
+    
+    return master_list
+
+@app.post("/users/login")
+def login(request: LoginRequest, db: Session = Depends(get_db)):
+    """
+    Checks if username and password match.
+    """
+    user = db.query(User).filter(User.username == request.username).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # NOTE: In a real app, we compare Hashes. Here we compare plain text for now.
+    if user.password_hash != request.password:
+        raise HTTPException(status_code=401, detail="Incorrect password")
+        
+    return {
+        "status": "success", 
+        "user_id": user.id, 
+        "role": user.role,
+        "full_name": user.full_name
+    }
+
+@app.post("/ai/recommend-substitute")
+def recommend_substitute(req: SubstitutionRequest, db: Session = Depends(get_db)):
+    """
+    AI Logic to find the best substitute teacher.
+    """
+    # Convert string times to Python time objects
+    try:
+        req_start = datetime.strptime(req.start_time, "%H:%M").time()
+        # Handle cases where end_time might be calculated differently
+        req_end = datetime.strptime(req.end_time, "%H:%M").time()
+    except ValueError:
+        # Fallback if time format is wrong
+        raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
+
+    # 1. Get all teachers
+    all_teachers = db.query(User).filter(User.role == "teacher").all()
+    candidates = []
+
+    for teacher in all_teachers:
+        is_available = True
+        reason = "Available"
+        score = 0
+
+        # CHECK 1: CONFLICTS IN SCHEDULE (Is he already teaching?)
+        conflict_class = db.query(models.Schedule).filter(
+            models.Schedule.teacher_id == teacher.id,
+            models.Schedule.day_of_week == req.day_of_week,
+            models.Schedule.start_time == req_start
+        ).first()
+
+        if conflict_class:
+            is_available = False
+            reason = f"Busy: Teaching {conflict_class.subject}"
+
+        # CHECK 2: BUSY STATUS (Did he mark himself as busy?)
+        if is_available:
+            busy_slot = db.query(models.TeacherAvailability).filter(
+                models.TeacherAvailability.teacher_id == teacher.id,
+                models.TeacherAvailability.day_of_week == req.day_of_week,
+                models.TeacherAvailability.start_time == req_start,
+                models.TeacherAvailability.status == "BUSY"
+            ).first()
+            
+            if busy_slot:
+                is_available = False
+                reason = "Marked as Busy/Unavailable"
+
+        # CHECK 3: SCORING (AI Logic)
+        if is_available:
+            score += 10 # Base score for being free
+            
+            # Bonus: Teaches the same subject?
+            has_taught_subject = db.query(models.Schedule).filter(
+                models.Schedule.teacher_id == teacher.id,
+                models.Schedule.subject == req.subject_needed
+            ).first()
+            
+            if has_taught_subject:
+                score += 5
+                reason = f"Recommended: Teaches {req.subject_needed}"
+
+        if is_available:
+            candidates.append({
+                "id": teacher.id,
+                "name": teacher.full_name,
+                "score": score,
+                "reason": reason,
+                "phone": teacher.phone_number
+            })
+
+    # Sort: Highest score first
+    candidates.sort(key=lambda x: x['score'], reverse=True)
+    
+    return candidates
+
+@app.get("/grades/analytics/{class_name}")
+def get_class_analytics(class_name: str, db: Session = Depends(get_db)):
+    """
+    Get all grades for a specific class, organized by student.
+    Used for the Class Analytics Dashboard.
+    """
+    # 1. Get all students in this class
+    students = db.query(Student).filter(Student.class_name == class_name).all()
+    
+    analytics_data = []
+    
+    for s in students:
+        # Get grades for this student
+        grades = db.query(Grade).filter(Grade.student_id == s.id).all()
+        
+        if not grades:
+            continue
+            
+        # Calculate stats
+        total_score = sum(g.score for g in grades)
+        avg_score = total_score / len(grades)
+        
+        # Check for failed subjects (< 40 marks)
+        failed_subjects = [g.subject for g in grades if g.score < 40]
+        
+        analytics_data.append({
+            "id": s.id,
+            "name": s.full_name,
+            "average": round(avg_score, 1),
+            "failed_count": len(failed_subjects),
+            "failed_subjects": failed_subjects
+        })
+    
+    # Sort: Lowest average first (so teachers see 'At Risk' students at the top)
+    analytics_data.sort(key=lambda x: x['average'])
+    
+    return analytics_data

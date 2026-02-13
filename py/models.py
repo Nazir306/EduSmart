@@ -23,6 +23,7 @@ class User(Base):
     password_hash = Column(String)
     full_name = Column(String)
     role = Column(String, default="teacher") 
+    phone_number = Column(String, nullable=True)
     
     # Relationships
     schedules = relationship("Schedule", back_populates="teacher")

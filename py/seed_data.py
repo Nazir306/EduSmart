@@ -1,80 +1,116 @@
 from sqlalchemy.orm import Session
-from models import engine, User, Student, Schedule, Grade, Base, TeacherAvailability
+from models import engine, User, Student, Schedule, Grade, Base
 from datetime import datetime, time
 import random
 
 # 1. CLEANUP & RESET
-print("♻️  Resetting Database for Realistic Scenario...")
+print("♻️  Resetting Database for High-Traffic Simulation...")
 Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 
 session = Session(bind=engine)
 
 # --- A. CREATE TEACHERS ---
-# We map specific teachers to specific subjects
-teachers_config = [
-    {"name": "Mr. John Smith", "user": "mr_smith", "subject": "Mathematics"},
-    {"name": "Ms. Sarah Connor", "user": "ms_connor", "subject": "Science"},
-    {"name": "Dr. Alan Grant", "user": "dr_grant", "subject": "History"},
-    {"name": "Mrs. Ellen Ripley", "user": "mrs_ripley", "subject": "English"},
-    {"name": "Prof. Charles X", "user": "prof_x", "subject": "Physics"},
+print("👨‍🏫 Hiring Teachers...")
+teachers_data = [
+    {"name": "Mr. John Smith",    "user": "math1", "subject": "Mathematics", "phone": "60123456780"},
+    {"name": "Ms. Ada Lovelace",  "user": "math2", "subject": "Mathematics", "phone": "60123456781"},
+    {"name": "Ms. Sarah Connor",  "user": "sci1",  "subject": "Science",     "phone": "60123456782"},
+    {"name": "Dr. Emmett Brown",  "user": "sci2",  "subject": "Science",     "phone": "60123456783"},
+    {"name": "Mrs. Ellen Ripley", "user": "eng1",  "subject": "English",     "phone": "60123456784"},
+    {"name": "Mr. Shakespeare",   "user": "eng2",  "subject": "English",     "phone": "60123456785"},
+    {"name": "Dr. Alan Grant",    "user": "hist1", "subject": "History",     "phone": "60123456786"},
+    {"name": "Cikgu Siti",        "user": "bm1",   "subject": "Bahasa Melayu", "phone": "60123456787"},
+    {"name": "Encik Razak",       "user": "bm2",   "subject": "Bahasa Melayu", "phone": "60123456788"},
+    {"name": "Ms. Lara Croft",    "user": "geo1",  "subject": "Geography",   "phone": "60123456789"},
+    {"name": "Mr. Bob Ross",      "user": "art1",  "subject": "Art",         "phone": "60123456790"},
+    {"name": "Mr. Neo Anderson",  "user": "it1",   "subject": "Computer Science", "phone": "60123456791"},
+    {"name": "Coach Carter",      "user": "pe1",   "subject": "P.E.",        "phone": "60123456792"},
 ]
 
-db_teachers = {} 
+all_teachers = []
+db_teachers_by_subj = {} 
 
-for t in teachers_config:
-    new_t = User(
-        full_name=t["name"], 
-        username=t["user"], 
-        password_hash="123", 
-        role="teacher"
-    )
+for t in teachers_data:
+    new_t = User(username=t["user"], full_name=t["name"], password_hash="123", role="teacher", phone_number=t["phone"])
     session.add(new_t)
-    session.flush()
-    db_teachers[t["subject"]] = new_t
+    all_teachers.append(new_t)
+    if t["subject"] not in db_teachers_by_subj: db_teachers_by_subj[t["subject"]] = []
+    db_teachers_by_subj[t["subject"]].append(new_t)
 
 session.commit()
-print("✅ Teachers Created.")
 
 # --- B. CREATE STUDENTS ---
-students = ["Alice Wonderland", "Bob Builder", "Charlie Chaplin", "Harry Potter", "Tony Stark"]
-for name in students:
-    session.add(Student(full_name=name, class_name="5 Science A"))
+print("🎓 Enrolling Students...")
+class_names = ["5 Science A", "4 Arts B", "3 Junior C"]
+first_names = ["Ali", "Chong", "Muthu", "Sarah", "David", "Amina", "Mei", "Raj", "Jessica", "Omar", "Jenny", "Kevin", "Siti", "Ah Meng", "Gopal", "Lisa", "Tom", "Nurul", "Ben", "Diana"]
+last_names = ["Tan", "Lee", "Wong", "Singh", "Abdullah", "Razak", "Lim", "Krishnan", "Smith", "Fernandez"]
+
+# Define subjects per class for Grade Generation
+class_subjects_map = {
+    "5 Science A": ["Mathematics", "Science", "English", "Bahasa Melayu", "Computer Science"],
+    "4 Arts B":    ["Art", "Bahasa Melayu", "Mathematics", "Geography", "English"],
+    "3 Junior C":  ["P.E.", "History", "Science", "Art", "Mathematics"]
+}
+
+all_students = []
+
+for class_name in class_names:
+    for i in range(20): 
+        fname = random.choice(first_names)
+        lname = random.choice(last_names)
+        new_s = Student(full_name=f"{fname} {lname}", class_name=class_name)
+        session.add(new_s)
+        all_students.append(new_s)
+
 session.commit()
-print("✅ Students Created.")
 
-# --- C. CREATE REALISTIC SCHEDULE ---
-# Scenario: 5 Science A has the same schedule every day (Mon-Fri)
+# --- C. GENERATE SCHEDULE ---
+print("📅 Generating Master Timetable...")
+# ... (Schedule logic matches previous versions, omitted here for brevity but included in run) ...
+# (Simulated simple schedule creation for context)
 days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-
-# The Schedule Slots (Time, Subject, Room)
-# Note: 10:00-10:30 is LUNCH, so we skip it.
-daily_slots = [
-    {"start": time(8, 0),  "end": time(9, 0),   "subject": "Mathematics", "room": "Rm 101"},
-    {"start": time(9, 0),  "end": time(10, 0),  "subject": "Science",     "room": "Lab 1"},
-    # 10:00 - 10:30 LUNCH BREAK
-    {"start": time(10, 30), "end": time(11, 20), "subject": "History",     "room": "Rm 204"},
-    {"start": time(11, 20), "end": time(12, 10), "subject": "English",     "room": "Rm 105"},
-    {"start": time(12, 10), "end": time(13, 0),  "subject": "Physics",     "room": "Lab 2"},
-]
-
-print("📅 Building Full Class Schedule...")
+time_slots = [(time(8,0), time(9,0)), (time(9,0), time(10,0)), (time(10,30), time(11,20)), (time(11,20), time(12,10)), (time(12,10), time(13,0))]
 
 for day in days:
-    for slot in daily_slots:
-        # Find the teacher responsible for this subject
-        teacher = db_teachers[slot["subject"]]
-        
-        new_class = Schedule(
-            teacher_id=teacher.id,
-            day_of_week=day,
-            start_time=slot["start"],
-            end_time=slot["end"],
-            subject=slot["subject"],
-            room=slot["room"]
-        )
-        session.add(new_class)
+    for slot_idx, (start_t, end_t) in enumerate(time_slots):
+        busy_teachers = []
+        for class_name, subjects in class_subjects_map.items():
+            subj_idx = (slot_idx + days.index(day)) % len(subjects)
+            subject = subjects[subj_idx]
+            candidates = db_teachers_by_subj.get(subject, [])
+            teacher = next((t for t in candidates if t.id not in busy_teachers), None)
+            
+            if teacher:
+                room = f"Class {class_name[0]}"
+                session.add(Schedule(teacher_id=teacher.id, day_of_week=day, start_time=start_t, end_time=end_t, subject=subject, room=room))
+                busy_teachers.append(teacher.id)
+session.commit()
+
+# --- D. GENERATE GRADES (NEW SECTION) ---
+print("📊 Grading Exams...")
+
+for student in all_students:
+    subjects = class_subjects_map[student.class_name]
+    
+    # Randomly determine if student is "Smart", "Average", or "Struggling"
+    student_type = random.choices(["Smart", "Average", "Struggling"], weights=[0.2, 0.6, 0.2])[0]
+    
+    for subj in subjects:
+        if student_type == "Smart":
+            score = random.randint(75, 100)
+        elif student_type == "Average":
+            score = random.randint(40, 80)
+        else:
+            score = random.randint(15, 55) # High chance of failing
+            
+        session.add(Grade(student_id=student.id, subject=subj, score=score, term="Mid-Term"))
 
 session.commit()
-print("✅ Realistic Timetable Created (8am - 1pm).")
-print("   - Lunch Break gap left at 10:00am.")
+
+# --- E. ADMIN ---
+admin = User(username="admin", full_name="Principal Skinner", password_hash="admin123", role="admin", phone_number="60199999999")
+session.add(admin)
+session.commit()
+
+print("✅ DONE! Database populated with Teachers, Schedules, and 300+ Student Grades.")

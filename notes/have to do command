@@ -1,3 +1,5 @@
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+esv/Scripts/activate
 pip freeze > requirements.txt
-uvicorn 17_fastsql:app
+uvicorn main:app --reload
+streamlit run app.py
