@@ -1,5 +1,8 @@
+# seed_data.py
 from sqlalchemy.orm import Session
-from models import engine, User, Student, Schedule, Grade, Base
+# 👇 FIXED IMPORTS: 
+from backend.database import engine, Base
+from backend.models import User, Student, Schedule, Grade
 from datetime import datetime, time
 import random
 
@@ -35,10 +38,11 @@ for t in teachers_data:
     new_t = User(username=t["user"], full_name=t["name"], password_hash="123", role="teacher", phone_number=t["phone"])
     session.add(new_t)
     all_teachers.append(new_t)
+    # Commit partially to generate IDs so we can use them
+    session.commit() 
+    
     if t["subject"] not in db_teachers_by_subj: db_teachers_by_subj[t["subject"]] = []
     db_teachers_by_subj[t["subject"]].append(new_t)
-
-session.commit()
 
 # --- B. CREATE STUDENTS ---
 print("🎓 Enrolling Students...")
@@ -46,7 +50,7 @@ class_names = ["5 Science A", "4 Arts B", "3 Junior C"]
 first_names = ["Ali", "Chong", "Muthu", "Sarah", "David", "Amina", "Mei", "Raj", "Jessica", "Omar", "Jenny", "Kevin", "Siti", "Ah Meng", "Gopal", "Lisa", "Tom", "Nurul", "Ben", "Diana"]
 last_names = ["Tan", "Lee", "Wong", "Singh", "Abdullah", "Razak", "Lim", "Krishnan", "Smith", "Fernandez"]
 
-# Define subjects per class for Grade Generation
+# Define subjects per class
 class_subjects_map = {
     "5 Science A": ["Mathematics", "Science", "English", "Bahasa Melayu", "Computer Science"],
     "4 Arts B":    ["Art", "Bahasa Melayu", "Mathematics", "Geography", "English"],
@@ -67,8 +71,6 @@ session.commit()
 
 # --- C. GENERATE SCHEDULE ---
 print("📅 Generating Master Timetable...")
-# ... (Schedule logic matches previous versions, omitted here for brevity but included in run) ...
-# (Simulated simple schedule creation for context)
 days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 time_slots = [(time(8,0), time(9,0)), (time(9,0), time(10,0)), (time(10,30), time(11,20)), (time(11,20), time(12,10)), (time(12,10), time(13,0))]
 
@@ -79,21 +81,21 @@ for day in days:
             subj_idx = (slot_idx + days.index(day)) % len(subjects)
             subject = subjects[subj_idx]
             candidates = db_teachers_by_subj.get(subject, [])
+            
+            # Find a teacher not busy in this slot
             teacher = next((t for t in candidates if t.id not in busy_teachers), None)
             
             if teacher:
-                room = f"Class {class_name[0]}"
+                room = f"Class {class_name[0]}" # e.g. "Class 5"
                 session.add(Schedule(teacher_id=teacher.id, day_of_week=day, start_time=start_t, end_time=end_t, subject=subject, room=room))
                 busy_teachers.append(teacher.id)
 session.commit()
 
-# --- D. GENERATE GRADES (NEW SECTION) ---
+# --- D. GENERATE GRADES ---
 print("📊 Grading Exams...")
 
 for student in all_students:
     subjects = class_subjects_map[student.class_name]
-    
-    # Randomly determine if student is "Smart", "Average", or "Struggling"
     student_type = random.choices(["Smart", "Average", "Struggling"], weights=[0.2, 0.6, 0.2])[0]
     
     for subj in subjects:
@@ -102,7 +104,7 @@ for student in all_students:
         elif student_type == "Average":
             score = random.randint(40, 80)
         else:
-            score = random.randint(15, 55) # High chance of failing
+            score = random.randint(15, 55)
             
         session.add(Grade(student_id=student.id, subject=subj, score=score, term="Mid-Term"))
 
@@ -113,4 +115,4 @@ admin = User(username="admin", full_name="Principal Skinner", password_hash="adm
 session.add(admin)
 session.commit()
 
-print("✅ DONE! Database populated with Teachers, Schedules, and 300+ Student Grades.")
+print("✅ DONE! Database populated.")

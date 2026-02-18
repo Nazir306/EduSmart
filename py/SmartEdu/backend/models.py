@@ -1,13 +1,9 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime, Float, Time, Date
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Float, Time, Date
+from sqlalchemy.orm import relationship
 from datetime import datetime
 
-# 1. SETUP SQLITE DATABASE
-DATABASE_URL = "sqlite:///./school.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# 👇 CRITICAL CHANGE: We import Base from database.py instead of creating it here
+from .database import Base
 
 # --- TABLE DEFINITIONS ---
 
@@ -30,7 +26,6 @@ class User(Base):
     availabilities = relationship("TeacherAvailability", back_populates="teacher")
     attendance_logs = relationship("TeacherAttendance", back_populates="teacher")
 
-    # FIX: We split "leaves" into two separate lists so SQLAlchemy isn't confused
     leaves_requested = relationship("LeaveRequest", foreign_keys="[LeaveRequest.teacher_id]", back_populates="teacher")
     substitute_assignments = relationship("LeaveRequest", foreign_keys="[LeaveRequest.substitute_teacher_id]", back_populates="substitute")
 
@@ -71,7 +66,7 @@ class TeacherAvailability(Base):
 
     teacher = relationship("User", back_populates="availabilities")
 
-# --- MODULE A: LEAVES (THE FIX IS HERE) ---
+# --- MODULE A: LEAVES ---
 
 class LeaveRequest(Base):
     __tablename__ = "leave_requests"
@@ -88,7 +83,6 @@ class LeaveRequest(Base):
     reason = Column(String)
     status = Column(String, default="PENDING")
 
-    # FIX: Explicitly tell SQLAlchemy which Foreign Key to use
     teacher = relationship("User", foreign_keys=[teacher_id], back_populates="leaves_requested")
     substitute = relationship("User", foreign_keys=[substitute_teacher_id], back_populates="substitute_assignments")
 
@@ -126,8 +120,3 @@ class Grade(Base):
     term = Column(String)
 
     student = relationship("Student", back_populates="grades")
-
-if __name__ == "__main__":
-    print("Creating database tables...")
-    Base.metadata.create_all(bind=engine)
-    print("Success! 'school.db' created.")
